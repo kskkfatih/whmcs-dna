@@ -1423,41 +1423,43 @@ function domainnameapi_parse_trcontact($contactDetails) {
     return $tr_domain_fields;
 }
 
-function domainnameapi_parse_cache($key,$ttl,$callback){
 
-    $cache_key = "domainnameapi_{$key}";
+//eski kod
+// function domainnameapi_parse_cache($key,$ttl,$callback){
 
-    $token_row = Capsule::table('tblconfiguration')
-                        ->where('setting', $cache_key)
-                        ->first();
+//     $cache_key = "domainnameapi_{$key}";
 
-    //if module newly installed, create token row
-    if (!isset($token_row)) {
-        Capsule::table('tblconfiguration')
-               ->insert([
-                   'setting' => $cache_key,
-                   'value'   => ''
-               ]);
-    }
+//     $token_row = Capsule::table('tblconfiguration')
+//                         ->where('setting', $cache_key)
+//                         ->first();
 
-    if (strtotime($token_row->updated_at) < (time() - 600)) {
+//     //if module newly installed, create token row
+//     if (!isset($token_row)) {
+//         Capsule::table('tblconfiguration')
+//                ->insert([
+//                    'setting' => $cache_key,
+//                    'value'   => ''
+//                ]);
+//     }
 
-        $data = $callback();
+//     if (strtotime($token_row->updated_at) < (time() - 600)) {
 
-        Capsule::table('tblconfiguration')
-               ->where('setting', $cache_key)
-               ->update([
-                   'value'      => serialize($data),
-                   'updated_at' => date('Y-m-d H:i:s', strtotime("+{$ttl} seconds"))
-               ]);
+//         $data = $callback();
 
-        return $data;
+//         Capsule::table('tblconfiguration')
+//                ->where('setting', $cache_key)
+//                ->update([
+//                    'value'      => serialize($data),
+//                    'updated_at' => date('Y-m-d H:i:s', strtotime("+{$ttl} seconds"))
+//                ]);
 
-    }else{
-        return unserialize($token_row->value);
-    }
+//         return $data;
 
-}
+//     }else{
+//         return unserialize($token_row->value);
+//     }
+
+// }
 
 /*
 function domainnameapi_exchangerates() {
@@ -1490,6 +1492,48 @@ function domainnameapi_exchangerates() {
     return $rates;
 }
 */
+//Güncel Kod
+//Not: Aşağıda eklenen güncel kod yukarıdaki kodun whmcs v8.6.x ve 8.7.x sürümlerinde hatasız çalışmasını sağlamaktadır. 
+//WHMCS tarafında yaşanan hata ise benzersiz bir kayıt değeri(id) olduğu için bu verinin var olduğunu ve işlenemediğini ifade eden hatalar oluşturmaktadır.
+//Hata çıktısı ise: domainnameapi_parse_cache kısmında Duplicate entry hatasının varlığını ifade etmektedir.
+function domainnameapi_parse_cache($key, $ttl, $callback)
+{
+    $cache_key = "domainnameapi_{$key}";
+
+    // Veritabanında bu anahtarla bir kayıt olup olmadığını kontrol et
+    $token_row = Illuminate\Database\Capsule\Manager::table('tblconfiguration')
+                        ->where('setting', $cache_key)
+                        ->first();
+
+    // Kayıt güncellenmesi gerekiyorsa
+    if (!$token_row || strtotime($token_row->updated_at) < (time() - $ttl)) {
+        $data = $callback();
+
+        if ($token_row) {
+            // Kayıt varsa güncelle
+            Illuminate\Database\Capsule\Manager::table('tblconfiguration')
+                   ->where('setting', $cache_key)
+                   ->update(['value' => serialize($data), 'updated_at' => date('Y-m-d H:i:s')]);
+        } else {
+            // Kayıt yoksa ekle
+            try {
+                Illuminate\Database\Capsule\Manager::table('tblconfiguration')
+                       ->insert(['setting' => $cache_key, 'value' => serialize($data), 'updated_at' => date('Y-m-d H:i:s')]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Eğer 'Duplicate entry' hatası alınırsa, bu veri zaten mevcut demektir.
+                // Bu durumda, güncelleme yapılabilir.
+                Illuminate\Database\Capsule\Manager::table('tblconfiguration')
+                       ->where('setting', $cache_key)
+                       ->update(['value' => serialize($data), 'updated_at' => date('Y-m-d H:i:s')]);
+            }
+        }
+
+        return $data;
+    } else {
+        // Kayıt mevcutsa ve güncelse, mevcut veriyi kullan
+        return unserialize($token_row->value);
+    }
+}
 
 function domainnameapi_exchangerates() {
     $rates = [];
